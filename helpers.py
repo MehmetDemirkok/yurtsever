@@ -83,9 +83,7 @@ def validate_dates(check_in: str, check_out: str) -> bool:
         if check_in_date >= check_out_date:
             return False
             
-        if check_in_date < datetime.now().replace(hour=0, minute=0, second=0, microsecond=0):
-            return False
-            
         return True
-    except ValueError:
+    except ValueError as e:
+        print(f"DEBUG: validate_dates ValueError: {e}")
         return False 

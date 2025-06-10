@@ -63,7 +63,7 @@ class StayModel:
             List[Dict[str, Any]]: List of stay records
         """
         try:
-            self.db.cursor.execute('SELECT id, guest_name, check_in_date, check_out_date, nightly_rate, total_amount, created_at, updated_at FROM stays ORDER BY check_in_date DESC')
+            self.db.cursor.execute('SELECT id, guest_name, guest_title, country, city, check_in_date, check_out_date, room_type, nightly_rate, total_amount, created_at, updated_at FROM stays ORDER BY check_in_date DESC')
             columns = [description[0] for description in self.db.cursor.description]
             return [dict(zip(columns, row)) for row in self.db.cursor.fetchall()]
         except Exception as e:
@@ -80,7 +80,7 @@ class StayModel:
             Optional[Dict[str, Any]]: Stay record if found, None otherwise
         """
         try:
-            self.db.cursor.execute('SELECT id, guest_name, check_in_date, check_out_date, nightly_rate, total_amount, created_at, updated_at FROM stays WHERE id = ?', (stay_id,))
+            self.db.cursor.execute('SELECT id, guest_name, guest_title, country, city, check_in_date, check_out_date, room_type, nightly_rate, total_amount, created_at, updated_at FROM stays WHERE id = ?', (stay_id,))
             row = self.db.cursor.fetchone()
             if row:
                 columns = [description[0] for description in self.db.cursor.description]

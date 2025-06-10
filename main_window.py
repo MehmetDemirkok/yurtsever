@@ -84,28 +84,38 @@ class MainWindow(QMainWindow):
         
         # Room type input
         self.room_type_combo = QComboBox()
-        self.room_type_combo.addItems(['Standart Oda', 'Deluxe Oda', 'Suit Oda', 'Aile Odası'])
+        self.room_type_combo.addItems(['Single Oda', 'Double Oda', 'Triple Oda', 'Suit Oda', 'Aile Odası'])
         dates_room_layout.addWidget(QLabel("Oda Tipi:"))
         dates_room_layout.addWidget(self.room_type_combo)
         
         form_layout.addLayout(dates_room_layout)
         
-        # Fourth row - Nightly rate and Add button
-        rate_button_layout = QHBoxLayout()
+        # All action buttons and nightly rate input in one horizontal layout
+        action_buttons_and_rate_layout = QHBoxLayout()
         
         # Nightly rate input
         self.nightly_rate_input = QLineEdit()
         self.nightly_rate_input.setPlaceholderText('Gecelik Ücret')
         self.nightly_rate_input.setValidator(QDoubleValidator(0.00, 999999.99, 2))
-        rate_button_layout.addWidget(self.nightly_rate_input)
+        action_buttons_and_rate_layout.addWidget(self.nightly_rate_input)
         
         # Add button
         self.add_button = QPushButton('Ekle')
         self.add_button.setObjectName('add_button')
         self.add_button.clicked.connect(self.add_stay)
-        rate_button_layout.addWidget(self.add_button)
+        action_buttons_and_rate_layout.addWidget(self.add_button)
         
-        form_layout.addLayout(rate_button_layout)
+        # Edit selected button
+        self.edit_selected_button = QPushButton('Seçili Kaydı Düzenle')
+        self.edit_selected_button.clicked.connect(self.edit_selected_stay)
+        action_buttons_and_rate_layout.addWidget(self.edit_selected_button)
+
+        # Delete selected button
+        self.delete_selected_button = QPushButton('Seçili Kaydı Sil')
+        self.delete_selected_button.clicked.connect(self.delete_selected_stay)
+        action_buttons_and_rate_layout.addWidget(self.delete_selected_button)
+
+        form_layout.addLayout(action_buttons_and_rate_layout)
         
         # Connect returnPressed signal to add_button's clicked signal
         self.guest_name_input.returnPressed.connect(self.add_button.click)
@@ -118,12 +128,14 @@ class MainWindow(QMainWindow):
         
         # Create table
         self.table = QTableWidget()
-        self.table.setColumnCount(11)  # Increased column count for action buttons (Edit and Delete)
+        self.table.setColumnCount(10)  # Changed column count from 9 to 10
         self.table.setHorizontalHeaderLabels([
             'ID', 'Adı Soyadı', 'Unvan', 'Ülke', 'Şehir',
-            'Giriş Tarihi', 'Çıkış Tarihi', 'Oda Tipi', 'Gecelik Ücret', 'Düzenle', 'Sil'
+            'Giriş Tarihi', 'Çıkış Tarihi', 'Oda Tipi', 'Gecelik Ücret', 'Toplam Ücret'
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
         main_layout.addWidget(self.table)
         
         # Create report and import controls
@@ -136,7 +148,7 @@ class MainWindow(QMainWindow):
         
         # Report type selection
         self.report_type_combo = QComboBox()
-        self.report_type_combo.addItems(['Konaklama Raporu', 'Oda Doluluk Raporu'])
+        self.report_type_combo.addItems(['Konaklama Raporu'])
         control_layout.addWidget(self.report_type_combo)
         
         # Generate report button
@@ -169,6 +181,8 @@ class MainWindow(QMainWindow):
         check_out = self.check_out_date.date().toString('yyyy-MM-dd')
         room_type = self.room_type_combo.currentText()
         
+        print(f"DEBUG: check_in: {check_in}, check_out: {check_out}")
+
         try:
             nightly_rate = float(self.nightly_rate_input.text().strip())
         except ValueError:
@@ -197,6 +211,7 @@ class MainWindow(QMainWindow):
             self.load_stays()
             self.clear_inputs()
         except Exception as e:
+            print(f"DEBUG: Error adding stay: {e}")
             QMessageBox.critical(self, 'Hata', f'Kayıt eklenirken hata oluştu: {str(e)}')
     
     def load_stays(self):
@@ -215,16 +230,9 @@ class MainWindow(QMainWindow):
                 self.table.setItem(row, 6, QTableWidgetItem(stay['check_out_date']))
                 self.table.setItem(row, 7, QTableWidgetItem(stay['room_type']))
                 self.table.setItem(row, 8, QTableWidgetItem(format_currency(stay['nightly_rate'])))
+                self.table.setItem(row, 9, QTableWidgetItem(format_currency(stay['total_amount'])))
                 
-                # Add Edit button
-                edit_button = QPushButton('Düzenle')
-                edit_button.clicked.connect(lambda checked, r=row: self.edit_stay(r))
-                self.table.setCellWidget(row, 9, edit_button)
-                
-                # Add Delete button
-                delete_button = QPushButton('Sil')
-                delete_button.clicked.connect(lambda checked, r=row: self.delete_stay(r))
-                self.table.setCellWidget(row, 10, delete_button)
+                # Removed Edit and Delete buttons from table cells
         except Exception as e:
             QMessageBox.critical(self, 'Hata', f'Veriler yüklenirken hata oluştu: {str(e)}')
     
@@ -237,10 +245,8 @@ class MainWindow(QMainWindow):
             stays = self.stay_model.get_all_stays()
             report = StayReport(stays)
             
-            if self.report_type_combo.currentText() == 'Konaklama Raporu':
-                report_df = report.get_period_report(period)
-            else:
-                report_df = report.get_room_occupancy(period)
+            # Simplified report generation as only 'Konaklama Raporu' remains
+            report_df = report.get_period_report(period)
             
             if report_df.empty:
                 QMessageBox.information(self, 'Bilgi', 'Seçilen dönem için veri bulunamadı.')
@@ -273,7 +279,7 @@ class MainWindow(QMainWindow):
     def edit_stay(self, row):
         """Populate input fields with data from selected stay for editing."""
         try:
-            stay_id = self.table.item(row, 0).text()
+            stay_id = int(self.table.item(row, 0).text())
             stay = self.stay_model.get_stay_by_id(stay_id)
             
             if stay:
@@ -288,6 +294,10 @@ class MainWindow(QMainWindow):
                         self.add_button.clicked.disconnect(lambda: self.save_edit(stay_id))
                     except TypeError: # If not connected to save_edit, it's not connected at all
                         pass
+                
+                self.add_button.setText('Kaydet')
+                # Connect the add button to save_edit with the current stay_id
+                self.add_button.clicked.connect(lambda: self.save_edit(stay_id))
 
                 self.guest_name_input.setText(stay['guest_name'])
                 self.guest_title_input.setText(stay['guest_title'])
@@ -300,6 +310,38 @@ class MainWindow(QMainWindow):
                 
         except Exception as e:
             QMessageBox.critical(self, 'Hata', f'Kayıt düzenlenirken hata oluştu: {str(e)}')
+    
+    def edit_selected_stay(self):
+        """Edit the currently selected stay record."""
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, 'Hata', 'Lütfen düzenlemek için bir kayıt seçin.')
+            return
+        row = selected_rows[0].row()
+        self.edit_stay(row)
+
+    def delete_stay(self, row):
+        """Delete the stay record at the specified row."""
+        stay_id = int(self.table.item(row, 0).text())
+        reply = QMessageBox.question(self, 'Onay', 'Bu kaydı silmek istediğinizden emin misiniz?',
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            try:
+                if self.stay_model.delete_stay(stay_id):
+                    self.load_stays()
+                else:
+                    QMessageBox.warning(self, 'Hata', 'Kayıt silinemedi.')
+            except Exception as e:
+                QMessageBox.critical(self, 'Hata', f'Kayıt silinirken hata oluştu: {str(e)}')
+
+    def delete_selected_stay(self):
+        """Delete the currently selected stay record."""
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, 'Hata', 'Lütfen silmek için bir kayıt seçin.')
+            return
+        row = selected_rows[0].row()
+        self.delete_stay(row)
     
     def save_edit(self, stay_id):
         """Save changes to an edited stay record."""
@@ -352,20 +394,6 @@ class MainWindow(QMainWindow):
                 pass
             self.add_button.clicked.connect(self._original_clicked_handler)
             self._original_clicked_handler = None
-    
-    def delete_stay(self, row):
-        """Delete the stay record at the specified row."""
-        stay_id = int(self.table.item(row, 0).text())
-        reply = QMessageBox.question(self, 'Onay', 'Bu kaydı silmek istediğinizden emin misiniz?',
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            try:
-                if self.stay_model.delete_stay(stay_id):
-                    self.load_stays()
-                else:
-                    QMessageBox.warning(self, 'Hata', 'Kayıt silinemedi.')
-            except Exception as e:
-                QMessageBox.critical(self, 'Hata', f'Kayıt silinirken hata oluştu: {str(e)}')
     
     def import_excel(self):
         """Import data from Excel file."""
