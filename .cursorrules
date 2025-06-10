@@ -1,0 +1,192 @@
+{
+  "version": 1,
+  "rules": {
+    "python": {
+      "fileNaming": {
+        "pattern": "^[a-z][a-z0-9_]*\\.py$",
+        "message": "Python files should be in snake_case and use .py extension"
+      },
+      "imports": {
+        "order": [
+          "standard_library",
+          "third_party",
+          "local"
+        ],
+        "message": "Imports should be ordered: standard library, third-party packages, local modules"
+      },
+      "classes": {
+        "naming": {
+          "pattern": "^[A-Z][a-zA-Z0-9]*$",
+          "message": "Class names should be in PascalCase"
+        },
+        "docstrings": {
+          "type": "required",
+          "message": "All classes must have docstrings"
+        }
+      },
+      "functions": {
+        "naming": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "message": "Function names should be in snake_case"
+        },
+        "docstrings": {
+          "type": "required",
+          "message": "All functions must have docstrings"
+        },
+        "typeHints": {
+          "type": "required",
+          "message": "All function parameters and return values must have type hints"
+        }
+      },
+      "variables": {
+        "naming": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "message": "Variable names should be in snake_case"
+        },
+        "constants": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "message": "Constants should be in UPPER_SNAKE_CASE"
+        }
+      },
+      "database": {
+        "sqlite": {
+          "type": "required",
+          "message": "Use SQLAlchemy or sqlite3 for database operations"
+        },
+        "errorHandling": {
+          "type": "required",
+          "message": "All database operations must include proper error handling"
+        }
+      },
+      "gui": {
+        "tkinter": {
+          "type": "required",
+          "message": "Use tkinter for GUI components"
+        },
+        "layout": {
+          "type": "required",
+          "message": "Use grid or pack layout managers consistently"
+        }
+      },
+      "codeQuality": {
+        "pep8": {
+          "type": "required",
+          "message": "Follow PEP 8 style guide"
+        },
+        "comments": {
+          "type": "required",
+          "message": "Complex logic must be documented with comments"
+        },
+        "modularity": {
+          "type": "required",
+          "message": "Code should be modular and reusable"
+        }
+      },
+      "testing": {
+        "type": "required",
+        "message": "Include unit tests for critical functionality"
+      },
+      "logging": {
+        "type": "required",
+        "message": "Use Python's logging module for proper logging"
+      }
+    },
+    "fileNaming": {
+      "pages": {
+        "pattern": "^[a-z][a-zA-Z0-9]*\\.(tsx|jsx)$",
+        "message": "Page files should be in PascalCase and use .tsx or .jsx extension"
+      },
+      "components": {
+        "pattern": "^[A-Z][a-zA-Z0-9]*\\.(tsx|jsx)$",
+        "message": "Component files should be in PascalCase and use .tsx or .jsx extension"
+      },
+      "api": {
+        "pattern": "^[a-z][a-zA-Z0-9]*\\.(ts|js)$",
+        "message": "API route files should be in camelCase and use .ts or .js extension"
+      },
+      "models": {
+        "pattern": "^[A-Z][a-zA-Z0-9]*\\.(ts|js)$",
+        "message": "Model files should be in PascalCase and use .ts or .js extension"
+      }
+    },
+    "imports": {
+      "order": [
+        "react",
+        "next",
+        "external",
+        "internal",
+        "components",
+        "styles"
+      ],
+      "message": "Imports should be ordered: React/Next.js, external packages, internal modules, components, styles"
+    },
+    "components": {
+      "props": {
+        "type": "required",
+        "message": "All component props must be typed using TypeScript interfaces or types"
+      },
+      "defaultExport": {
+        "type": "required",
+        "message": "Components should use default export"
+      }
+    },
+    "api": {
+      "errorHandling": {
+        "type": "required",
+        "message": "All API routes must include try/catch blocks for error handling"
+      },
+      "responseFormat": {
+        "type": "required",
+        "message": "API responses should follow the format: { success: boolean, data?: any, error?: string }"
+      }
+    },
+    "database": {
+      "models": {
+        "timestamps": {
+          "type": "required",
+          "message": "All MongoDB models must include createdAt and updatedAt timestamps"
+        },
+        "userTracking": {
+          "type": "required",
+          "message": "All models should track createdBy and updatedBy user information"
+        }
+      }
+    },
+    "styling": {
+      "responsive": {
+        "type": "required",
+        "message": "All components must be responsive and include mobile-first design"
+      },
+      "theme": {
+        "type": "required",
+        "message": "Use theme variables for colors, spacing, and typography"
+      }
+    },
+    "charts": {
+      "type": "required",
+      "message": "Use Chart.js or Recharts for data visualization"
+    },
+    "excel": {
+      "type": "required",
+      "message": "Use exceljs for Excel report generation"
+    },
+    "authentication": {
+      "type": "required",
+      "message": "Implement authentication using NextAuth.js or JWT"
+    },
+    "codeQuality": {
+      "comments": {
+        "type": "required",
+        "message": "Complex logic must be documented with comments"
+      },
+      "modularity": {
+        "type": "required",
+        "message": "Code should be modular and reusable"
+      },
+      "hardcoding": {
+        "type": "forbidden",
+        "message": "Avoid hardcoded values, use environment variables or constants"
+      }
+    }
+  }
+} 
