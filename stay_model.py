@@ -56,14 +56,62 @@ class StayModel:
             print(f"Error creating stay: {e}")
             raise
     
-    def get_all_stays(self) -> List[Dict[str, Any]]:
-        """Get all stay records.
+    def get_all_stays(self, guest_name: str = None, country: str = None, city: str = None, room_type: str = None, sort_column: str = None, sort_order: str = "DESC") -> List[Dict[str, Any]]:
+        """Get all stay records, with optional filtering and sorting.
         
+        Args:
+            guest_name (str): Optional filter for guest name.
+            country (str): Optional filter for country.
+            city (str): Optional filter for city.
+            room_type (str): Optional filter for room type.
+            sort_column (str): Column to sort by (e.g., 'guest_name', 'check_in_date').
+            sort_order (str): Sort order ('ASC' or 'DESC'). Defaults to 'DESC'.
+
         Returns:
             List[Dict[str, Any]]: List of stay records
         """
         try:
-            self.db.cursor.execute('SELECT id, guest_name, guest_title, country, city, check_in_date, check_out_date, room_type, nightly_rate, total_amount, created_at, updated_at FROM stays ORDER BY check_in_date DESC')
+            query = 'SELECT id, guest_name, guest_title, country, city, check_in_date, check_out_date, room_type, nightly_rate, total_amount, created_at, updated_at FROM stays'
+            conditions = []
+            params = []
+
+            if guest_name:
+                conditions.append("guest_name LIKE ?")
+                params.append(f'%{guest_name}%')
+            if country:
+                conditions.append("country LIKE ?")
+                params.append(f'%{country}%')
+            if city:
+                conditions.append("city LIKE ?")
+                params.append(f'%{city}%')
+            if room_type and room_type != 'Tümü':
+                conditions.append("room_type = ?")
+                params.append(room_type)
+            
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            
+            # Add sorting
+            if sort_column:
+                # Map display names to actual column names in the database
+                column_map = {
+                    'ID': 'id',
+                    'Adı Soyadı': 'guest_name',
+                    'Unvan': 'guest_title',
+                    'Ülke': 'country',
+                    'Şehir': 'city',
+                    'Giriş Tarihi': 'check_in_date',
+                    'Çıkış Tarihi': 'check_out_date',
+                    'Oda Tipi': 'room_type',
+                    'Gecelik Ücret': 'nightly_rate',
+                    'Toplam Ücret': 'total_amount'
+                }
+                db_column = column_map.get(sort_column, 'check_in_date') # Default to check_in_date
+                query += f" ORDER BY {db_column} {sort_order}"
+            else:
+                query += " ORDER BY check_in_date DESC" # Default sort
+
+            self.db.cursor.execute(query, tuple(params))
             columns = [description[0] for description in self.db.cursor.description]
             return [dict(zip(columns, row)) for row in self.db.cursor.fetchall()]
         except Exception as e:
@@ -168,4 +216,97 @@ class StayModel:
             return self.db.cursor.rowcount > 0
         except Exception as e:
             print(f"Error deleting stay: {e}")
+            raise
+    
+    def get_stay_statistics(self) -> Dict[str, Any]:
+        """Get statistics about stays including room type counts and total amounts.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing stay statistics
+        """
+        try:
+            # Get room type counts
+            self.db.cursor.execute('''
+                SELECT room_type, COUNT(*) as count, SUM(total_amount) as total_amount
+                FROM stays
+                GROUP BY room_type
+            ''')
+            room_stats = self.db.cursor.fetchall()
+            
+            # Get total stays and amount
+            self.db.cursor.execute('''
+                SELECT COUNT(*) as total_stays, SUM(total_amount) as total_amount
+                FROM stays
+            ''')
+            total_stats = self.db.cursor.fetchone()
+            
+            # Format the statistics
+            stats = {
+                'room_types': {
+                    row[0]: {
+                        'count': row[1],
+                        'total_amount': row[2]
+                    } for row in room_stats
+                },
+                'total_stays': total_stats[0],
+                'total_amount': total_stats[1]
+            }
+            
+            return stats
+        except Exception as e:
+            print(f"Error getting stay statistics: {e}")
+            raise
+    
+    def get_detailed_stay_report(self) -> List[Dict[str, Any]]:
+        """Get detailed stay report data for Excel export.
+        
+        Returns:
+            List[Dict[str, Any]]: List of dictionaries containing stay report data
+        """
+        try:
+            # Get all stays with detailed information
+            self.db.cursor.execute('''
+                SELECT 
+                    guest_name,
+                    guest_title,
+                    country,
+                    city,
+                    check_in_date,
+                    check_out_date,
+                    room_type,
+                    nightly_rate,
+                    total_amount,
+                    CASE 
+                        WHEN julianday(check_out_date) - julianday(check_in_date) = 1 THEN 'Single'
+                        WHEN julianday(check_out_date) - julianday(check_in_date) = 2 THEN 'Double'
+                        WHEN julianday(check_out_date) - julianday(check_in_date) = 3 THEN 'Triple'
+                        ELSE 'Multiple'
+                    END as stay_type,
+                    julianday(check_out_date) - julianday(check_in_date) as nights
+                FROM stays
+                ORDER BY check_in_date DESC
+            ''')
+            
+            stays = self.db.cursor.fetchall()
+            
+            # Format the data
+            report_data = []
+            for stay in stays:
+                report_data.append({
+                    'guest_name': stay[0],
+                    'guest_title': stay[1],
+                    'country': stay[2],
+                    'city': stay[3],
+                    'check_in_date': stay[4],
+                    'check_out_date': stay[5],
+                    'room_type': stay[6],
+                    'nightly_rate': stay[7],
+                    'total_amount': stay[8],
+                    'stay_type': stay[9],
+                    'nights': stay[10]
+                })
+            
+            return report_data
+        except Exception as e:
+            print(f"Error getting detailed stay report: {e}")
             raise 
