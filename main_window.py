@@ -31,7 +31,12 @@ class MainWindow(QMainWindow):
         """Normalize column names by stripping whitespace, converting to lowercase, and replacing spaces with underscores."""
         if pd.isna(col_name):
             return None
-        return unidecode(str(col_name).strip().lower().replace(" ", "_"))
+        # Convert to string and strip whitespace
+        col_str = str(col_name).strip()
+        # Convert Turkish characters to their ASCII equivalents
+        col_str = unidecode(col_str)
+        # Convert to lowercase and replace spaces with underscores
+        return col_str.lower().replace(" ", "_")
 
     def init_ui(self):
         """Initialize the user interface."""
@@ -438,19 +443,25 @@ class MainWindow(QMainWindow):
                 )
                 return
             
+            # Print column names for debugging
+            print("Original columns:", df.columns.tolist())
+            
             # Normalize column names by stripping whitespace and converting to a consistent format
             df.columns = [self.normalize_column_name(col) for col in df.columns]
+            
+            # Print normalized columns for debugging
+            print("Normalized columns:", df.columns.tolist())
 
             # Validate required columns (normalized)
             required_columns_map = {
-                self.normalize_column_name('Adı Soyadı'): 'Adı Soyadı',
-                self.normalize_column_name('Unvan'): 'Unvan',
-                self.normalize_column_name('Ülke'): 'Ülke',
-                self.normalize_column_name('Şehir'): 'Şehir',
-                self.normalize_column_name('Giriş Tarihi'): 'Giriş Tarihi',
-                self.normalize_column_name('Çıkış Tarihi'): 'Çıkış Tarihi',
-                self.normalize_column_name('Oda Tipi'): 'Oda Tipi',
-                self.normalize_column_name('Gecelik Ücret'): 'Gecelik Ücret'
+                'adi_soyadi': 'Adı Soyadı',
+                'unvan': 'Unvan',
+                'ulke': 'Ülke',
+                'sehir': 'Şehir',
+                'giris_tarihi': 'Giriş Tarihi',
+                'cikis_tarihi': 'Çıkış Tarihi',
+                'oda_tipi': 'Oda Tipi',
+                'gecelik_ucret': 'Gecelik Ücret'
             }
             
             missing_normalized_columns = [col for col in required_columns_map.keys() if col not in df.columns]
@@ -474,22 +485,22 @@ class MainWindow(QMainWindow):
                 try:
                     # Convert dates to string format and handle potential errors
                     try:
-                        check_in = pd.to_datetime(row[self.normalize_column_name('Giriş Tarihi')], errors='coerce')
+                        check_in = pd.to_datetime(row['giris_tarihi'], errors='coerce')
                         if pd.isna(check_in):
                             raise ValueError("Geçersiz tarih formatı")
                         check_in = check_in.strftime('%Y-%m-%d')
                     except Exception as e:
-                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Giriş Tarihi formatı ('{row[self.normalize_column_name('Giriş Tarihi')] if self.normalize_column_name('Giriş Tarihi') in row else 'N/A'}').")
+                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Giriş Tarihi formatı ('{row['giris_tarihi'] if 'giris_tarihi' in row else 'N/A'}').")
                         error_count += 1
                         continue
                     
                     try:
-                        check_out = pd.to_datetime(row[self.normalize_column_name('Çıkış Tarihi')], errors='coerce')
+                        check_out = pd.to_datetime(row['cikis_tarihi'], errors='coerce')
                         if pd.isna(check_out):
                             raise ValueError("Geçersiz tarih formatı")
                         check_out = check_out.strftime('%Y-%m-%d')
                     except Exception as e:
-                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Çıkış Tarihi formatı ('{row[self.normalize_column_name('Çıkış Tarihi')] if self.normalize_column_name('Çıkış Tarihi') in row else 'N/A'}').")
+                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Çıkış Tarihi formatı ('{row['cikis_tarihi'] if 'cikis_tarihi' in row else 'N/A'}').")
                         error_count += 1
                         continue
 
@@ -501,23 +512,23 @@ class MainWindow(QMainWindow):
 
                     # Convert nightly rate and handle potential errors
                     try:
-                        nightly_rate_str = str(row[self.normalize_column_name('Gecelik Ücret')]).strip()
+                        nightly_rate_str = str(row['gecelik_ucret']).strip()
                         if not nightly_rate_str:
                             raise ValueError("Boş değer")
                         nightly_rate = float(nightly_rate_str.replace(',', '.').replace(' ', ''))
                         if nightly_rate <= 0:
                             raise ValueError("Sıfır veya negatif değer")
                     except Exception as e:
-                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Gecelik Ücret formatı ('{row[self.normalize_column_name('Gecelik Ücret')] if self.normalize_column_name('Gecelik Ücret') in row else 'N/A'}').")
+                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Gecelik Ücret formatı ('{row['gecelik_ucret'] if 'gecelik_ucret' in row else 'N/A'}').")
                         error_count += 1
                         continue
                     
                     # Ensure required text fields are not empty after stripping
-                    guest_name = str(row[self.normalize_column_name('Adı Soyadı')]).strip()
-                    guest_title = str(row[self.normalize_column_name('Unvan')]).strip()
-                    country = str(row[self.normalize_column_name('Ülke')]).strip()
-                    city = str(row[self.normalize_column_name('Şehir')]).strip()
-                    room_type = str(row[self.normalize_column_name('Oda Tipi')]).strip()
+                    guest_name = str(row['adi_soyadi']).strip()
+                    guest_title = str(row['unvan']).strip()
+                    country = str(row['ulke']).strip()
+                    city = str(row['sehir']).strip()
+                    room_type = str(row['oda_tipi']).strip()
 
                     if not all([guest_name, guest_title, country, city, room_type]):
                         missing_fields = []
@@ -592,10 +603,6 @@ class MainWindow(QMainWindow):
             }
             df = pd.DataFrame(example_data)
             
-            # For debugging: print normalized columns before writing to excel
-            normalized_template_columns = [self.normalize_column_name(col) for col in df.columns]
-            print(f"Excel Şablonu Oluşturuluyor - Normalleştirilmiş Sütunlar: {normalized_template_columns}")
-            
             # Get save file path
             file_path, _ = QFileDialog.getSaveFileName(
                 self,
@@ -641,14 +648,14 @@ class MainWindow(QMainWindow):
             dv.add('G2:G1000')  # Apply to column G (Oda Tipi) for a generous range
             
             # Set column widths for better readability
-            worksheet.column_dimensions['A'].width = 15
-            worksheet.column_dimensions['B'].width = 15
-            worksheet.column_dimensions['C'].width = 15
-            worksheet.column_dimensions['D'].width = 15
-            worksheet.column_dimensions['E'].width = 18
-            worksheet.column_dimensions['F'].width = 18
-            worksheet.column_dimensions['G'].width = 15
-            worksheet.column_dimensions['H'].width = 15
+            worksheet.column_dimensions['A'].width = 20  # Adı Soyadı
+            worksheet.column_dimensions['B'].width = 15  # Unvan
+            worksheet.column_dimensions['C'].width = 15  # Ülke
+            worksheet.column_dimensions['D'].width = 15  # Şehir
+            worksheet.column_dimensions['E'].width = 15  # Giriş Tarihi
+            worksheet.column_dimensions['F'].width = 15  # Çıkış Tarihi
+            worksheet.column_dimensions['G'].width = 15  # Oda Tipi
+            worksheet.column_dimensions['H'].width = 15  # Gecelik Ücret
 
             # Add instructions
             instructions = [
@@ -659,23 +666,26 @@ class MainWindow(QMainWindow):
                 '   - Unvan: Bay/Bayan',
                 '   - Ülke: Misafirin ülkesi',
                 '   - Şehir: Misafirin şehri',
-                '   - Giriş Tarihi: YYYY-MM-DD formatında veya Excel tarih formatında',
-                '   - Çıkış Tarihi: YYYY-MM-DD formatında veya Excel tarih formatında',
+                '   - Giriş Tarihi: YYYY-MM-DD formatında (örn: 2024-03-20)',
+                '   - Çıkış Tarihi: YYYY-MM-DD formatında (örn: 2024-03-25)',
                 '   - Oda Tipi: Dropdown menüden seçiniz',
-                '   - Gecelik Ücret: Sayısal değer (örnek: 150.00)',
+                '   - Gecelik Ücret: Sayısal değer (örn: 500.00)',
                 '',
                 '2. Örnek kayıtları silip kendi kayıtlarınızı ekleyebilirsiniz.',
-                '3. Tarihleri doğru formatta girdiğinizden emin olun.',
+                '3. Tarihleri YYYY-MM-DD formatında girdiğinizden emin olun.',
                 '4. Oda tipini sağdaki dropdown menüden seçiniz.',
                 '5. Gecelik ücreti geçerli bir sayı olarak giriniz.',
                 '',
-                'Not: Bu şablonu doldurduktan sonra "Excel\\\'den İçe Aktar" butonu ile verileri sisteme aktarabilirsiniz.'
+                'Not: Bu şablonu doldurduktan sonra "Excel\'den İçe Aktar" butonu ile verileri sisteme aktarabilirsiniz.'
             ]
             
             # Create instructions sheet
             instructions_sheet = workbook.create_sheet(title='Kullanım Talimatları')
             for i, instruction in enumerate(instructions, 1):
                 instructions_sheet.cell(row=i, column=1, value=instruction)
+            
+            # Set column width for instructions
+            instructions_sheet.column_dimensions['A'].width = 80
 
             # Hide the room types sheet
             room_types_sheet.sheet_state = 'hidden'
