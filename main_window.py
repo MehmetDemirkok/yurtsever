@@ -15,6 +15,7 @@ from helpers import validate_dates, format_currency
 import pandas as pd
 from datetime import datetime
 from unidecode import unidecode
+from typing import Any, Optional
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -25,6 +26,13 @@ class MainWindow(QMainWindow):
         self.current_sort_order = Qt.AscendingOrder
         self.init_ui()
         
+    @staticmethod
+    def normalize_column_name(col_name: Any) -> Optional[str]:
+        """Normalize column names by stripping whitespace, converting to lowercase, and replacing spaces with underscores."""
+        if pd.isna(col_name):
+            return None
+        return unidecode(str(col_name).strip().lower().replace(" ", "_"))
+
     def init_ui(self):
         """Initialize the user interface."""
         self.setWindowTitle('Otel Konaklama Puantaj Sistemi')
@@ -196,6 +204,8 @@ class MainWindow(QMainWindow):
         
         # Load initial data
         self.load_stays()
+        
+        self.stay_model.report_generated.connect(self.show_info_message)
         
     def add_stay(self):
         """Add a new stay record."""
@@ -417,25 +427,30 @@ class MainWindow(QMainWindow):
             if not file_path:
                 return
             
-            # Read Excel file
-            df = pd.read_excel(file_path)
+            # Read Excel file with explicit encoding
+            try:
+                df = pd.read_excel(file_path, engine='openpyxl')
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    'Hata',
+                    f'Excel dosyası okunamadı: {str(e)}\nLütfen dosyanın geçerli bir Excel dosyası olduğundan emin olun.'
+                )
+                return
             
             # Normalize column names by stripping whitespace and converting to a consistent format
-            def normalize_column_name(col_name):
-                return unidecode(col_name.strip().lower().replace(" ", "_"))
-
-            df.columns = [normalize_column_name(col) for col in df.columns]
+            df.columns = [self.normalize_column_name(col) for col in df.columns]
 
             # Validate required columns (normalized)
             required_columns_map = {
-                normalize_column_name('Adı Soyadı'): 'Adı Soyadı',
-                normalize_column_name('Unvan'): 'Unvan',
-                normalize_column_name('Ülke'): 'Ülke',
-                normalize_column_name('Şehir'): 'Şehir',
-                normalize_column_name('Giriş Tarihi'): 'Giriş Tarihi',
-                normalize_column_name('Çıkış Tarihi'): 'Çıkış Tarihi',
-                normalize_column_name('Oda Tipi'): 'Oda Tipi',
-                normalize_column_name('Gecelik Ücret'): 'Gecelik Ücret'
+                self.normalize_column_name('Adı Soyadı'): 'Adı Soyadı',
+                self.normalize_column_name('Unvan'): 'Unvan',
+                self.normalize_column_name('Ülke'): 'Ülke',
+                self.normalize_column_name('Şehir'): 'Şehir',
+                self.normalize_column_name('Giriş Tarihi'): 'Giriş Tarihi',
+                self.normalize_column_name('Çıkış Tarihi'): 'Çıkış Tarihi',
+                self.normalize_column_name('Oda Tipi'): 'Oda Tipi',
+                self.normalize_column_name('Gecelik Ücret'): 'Gecelik Ücret'
             }
             
             missing_normalized_columns = [col for col in required_columns_map.keys() if col not in df.columns]
@@ -445,7 +460,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(
                     self,
                     'Hata',
-                    f'Excel dosyasında eksik sütunlar var: {", ".join(missing_original_names)}'
+                    f'Excel dosyasında eksik sütunlar var: {", ".join(missing_original_names)}\n\nLütfen Excel şablonunu kullanarak doğru formatta veri girişi yapın.'
                 )
                 return
             
@@ -459,16 +474,22 @@ class MainWindow(QMainWindow):
                 try:
                     # Convert dates to string format and handle potential errors
                     try:
-                        check_in = pd.to_datetime(row[normalize_column_name('Giriş Tarihi')]).strftime('%Y-%m-%d')
-                    except ValueError:
-                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Giriş Tarihi formatı ('{row[normalize_column_name('Giriş Tarihi')]}').")
+                        check_in = pd.to_datetime(row[self.normalize_column_name('Giriş Tarihi')], errors='coerce')
+                        if pd.isna(check_in):
+                            raise ValueError("Geçersiz tarih formatı")
+                        check_in = check_in.strftime('%Y-%m-%d')
+                    except Exception as e:
+                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Giriş Tarihi formatı ('{row[self.normalize_column_name('Giriş Tarihi')] if self.normalize_column_name('Giriş Tarihi') in row else 'N/A'}').")
                         error_count += 1
                         continue
                     
                     try:
-                        check_out = pd.to_datetime(row[normalize_column_name('Çıkış Tarihi')]).strftime('%Y-%m-%d')
-                    except ValueError:
-                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Çıkış Tarihi formatı ('{row[normalize_column_name('Çıkış Tarihi')]}').")
+                        check_out = pd.to_datetime(row[self.normalize_column_name('Çıkış Tarihi')], errors='coerce')
+                        if pd.isna(check_out):
+                            raise ValueError("Geçersiz tarih formatı")
+                        check_out = check_out.strftime('%Y-%m-%d')
+                    except Exception as e:
+                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Çıkış Tarihi formatı ('{row[self.normalize_column_name('Çıkış Tarihi')] if self.normalize_column_name('Çıkış Tarihi') in row else 'N/A'}').")
                         error_count += 1
                         continue
 
@@ -480,18 +501,23 @@ class MainWindow(QMainWindow):
 
                     # Convert nightly rate and handle potential errors
                     try:
-                        nightly_rate = float(str(row[normalize_column_name('Gecelik Ücret')]).replace(',', '.')) # Handle comma as decimal separator
-                    except ValueError:
-                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Gecelik Ücret formatı ('{row[normalize_column_name('Gecelik Ücret')]}').")
+                        nightly_rate_str = str(row[self.normalize_column_name('Gecelik Ücret')]).strip()
+                        if not nightly_rate_str:
+                            raise ValueError("Boş değer")
+                        nightly_rate = float(nightly_rate_str.replace(',', '.').replace(' ', ''))
+                        if nightly_rate <= 0:
+                            raise ValueError("Sıfır veya negatif değer")
+                    except Exception as e:
+                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Gecelik Ücret formatı ('{row[self.normalize_column_name('Gecelik Ücret')] if self.normalize_column_name('Gecelik Ücret') in row else 'N/A'}').")
                         error_count += 1
                         continue
                     
                     # Ensure required text fields are not empty after stripping
-                    guest_name = str(row[normalize_column_name('Adı Soyadı')]).strip()
-                    guest_title = str(row[normalize_column_name('Unvan')]).strip()
-                    country = str(row[normalize_column_name('Ülke')]).strip()
-                    city = str(row[normalize_column_name('Şehir')]).strip()
-                    room_type = str(row[normalize_column_name('Oda Tipi')]).strip()
+                    guest_name = str(row[self.normalize_column_name('Adı Soyadı')]).strip()
+                    guest_title = str(row[self.normalize_column_name('Unvan')]).strip()
+                    country = str(row[self.normalize_column_name('Ülke')]).strip()
+                    city = str(row[self.normalize_column_name('Şehir')]).strip()
+                    room_type = str(row[self.normalize_column_name('Oda Tipi')]).strip()
 
                     if not all([guest_name, guest_title, country, city, room_type]):
                         missing_fields = []
@@ -501,6 +527,13 @@ class MainWindow(QMainWindow):
                         if not city: missing_fields.append('Şehir')
                         if not room_type: missing_fields.append('Oda Tipi')
                         skipped_rows_details.append(f"Satır {row_num}: Eksik veya boş alanlar: {', '.join(missing_fields)}.")
+                        error_count += 1
+                        continue
+
+                    # Validate room type
+                    valid_room_types = ['Single Oda', 'Double Oda', 'Triple Oda', 'Suit Oda', 'Aile Odası']
+                    if room_type not in valid_room_types:
+                        skipped_rows_details.append(f"Satır {row_num}: Geçersiz Oda Tipi ('{room_type}'). Geçerli tipler: {', '.join(valid_room_types)}")
                         error_count += 1
                         continue
 
@@ -517,7 +550,7 @@ class MainWindow(QMainWindow):
                     )
                     success_count += 1
                 except Exception as e:
-                    skipped_rows_details.append(f"Satır {row_num}: Beklenmeyen hata: {e}")
+                    skipped_rows_details.append(f"Satır {row_num}: Beklenmeyen hata: {str(e)}")
                     error_count += 1
             
             # Reload table
@@ -540,7 +573,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 'Hata',
-                f'Excel dosyası içe aktarılırken genel bir hata oluştu: {str(e)}'
+                f'Excel dosyası içe aktarılırken genel bir hata oluştu: {str(e)}\n\nLütfen Excel şablonunu kullanarak doğru formatta veri girişi yapın.'
             )
     
     def download_excel_template(self):
@@ -558,6 +591,10 @@ class MainWindow(QMainWindow):
                 'Gecelik Ücret': [500, 750]
             }
             df = pd.DataFrame(example_data)
+            
+            # For debugging: print normalized columns before writing to excel
+            normalized_template_columns = [self.normalize_column_name(col) for col in df.columns]
+            print(f"Excel Şablonu Oluşturuluyor - Normalleştirilmiş Sütunlar: {normalized_template_columns}")
             
             # Get save file path
             file_path, _ = QFileDialog.getSaveFileName(
@@ -632,7 +669,7 @@ class MainWindow(QMainWindow):
                 '4. Oda tipini sağdaki dropdown menüden seçiniz.',
                 '5. Gecelik ücreti geçerli bir sayı olarak giriniz.',
                 '',
-                'Not: Bu şablonu doldurduktan sonra "Excel\'den İçe Aktar" butonu ile verileri sisteme aktarabilirsiniz.'
+                'Not: Bu şablonu doldurduktan sonra "Excel\\\'den İçe Aktar" butonu ile verileri sisteme aktarabilirsiniz.'
             ]
             
             # Create instructions sheet
@@ -734,8 +771,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 'Başarılı',
-                f"""Veriler başarıyla Excel'e aktarıldı:
-{file_path}"""
+                f"""Veriler başarıyla Excel'e aktarıldı:\n{file_path}"""
             )
             
         except Exception as e:
@@ -748,151 +784,139 @@ class MainWindow(QMainWindow):
     def generate_puantaj_report(self):
         """Generate detailed stay report in Excel format."""
         try:
-            # Get report data
-            report_data = self.stay_model.get_detailed_stay_report()
+            # Create date filter dialog
+            dialog = QDialog(self)
+            dialog.setWindowTitle('Puantaj Raporu Tarih Filtresi')
+            layout = QVBoxLayout()
+
+            # Add date range selection
+            date_layout = QHBoxLayout()
             
-            # Get save file path
-            file_path, _ = QFileDialog.getSaveFileName(
-                self,
-                "Puantaj Raporunu Kaydet",
-                "konaklama_puantaji.xlsx",
-                "Excel Dosyaları (*.xlsx)"
-            )
+            # Start date
+            start_date_label = QLabel('Başlangıç Tarihi:')
+            start_date = QDateEdit()
+            start_date.setDate(QDate.currentDate().addMonths(-1))
+            start_date.setCalendarPopup(True)
+            start_date.setDisplayFormat("dd.MM.yyyy")
+            date_layout.addWidget(start_date_label)
+            date_layout.addWidget(start_date)
             
-            if not file_path:
-                return
+            # End date
+            end_date_label = QLabel('Bitiş Tarihi:')
+            end_date = QDateEdit()
+            end_date.setDate(QDate.currentDate())
+            end_date.setCalendarPopup(True)
+            end_date.setDisplayFormat("dd.MM.yyyy")
+            date_layout.addWidget(end_date_label)
+            date_layout.addWidget(end_date)
             
-            # Add .xlsx extension if not present
-            if not file_path.endswith('.xlsx'):
-                file_path += '.xlsx'
+            layout.addLayout(date_layout)
             
-            # Create Excel writer
-            writer = pd.ExcelWriter(file_path, engine='openpyxl')
+            # Add buttons
+            button_layout = QHBoxLayout()
+            ok_button = QPushButton('Tamam')
+            cancel_button = QPushButton('İptal')
             
-            # Create main report sheet
-            df = pd.DataFrame(report_data)
+            ok_button.clicked.connect(dialog.accept)
+            cancel_button.clicked.connect(dialog.reject)
             
-            # Rename columns for better readability
-            column_names = {
-                'guest_name': 'Misafir Adı',
-                'guest_title': 'Unvan',
-                'country': 'Ülke',
-                'city': 'Şehir',
-                'check_in_date': 'Giriş Tarihi',
-                'check_out_date': 'Çıkış Tarihi',
-                'room_type': 'Oda Tipi',
-                'nightly_rate': 'Gecelik Ücret',
-                'total_amount': 'Toplam Ücret',
-                'stay_type': 'Konaklama Tipi',
-                'nights': 'Gece Sayısı'
-            }
-            df = df.rename(columns=column_names)
+            button_layout.addWidget(ok_button)
+            button_layout.addWidget(cancel_button)
+            layout.addLayout(button_layout)
             
-            # Write main report
-            df.to_excel(writer, sheet_name='Konaklama Puantajı', index=False)
+            dialog.setLayout(layout)
             
-            # Get workbook and worksheet
-            workbook = writer.book
-            worksheet = writer.sheets['Konaklama Puantajı']
-            
-            # Create summary sheet
-            summary_sheet = workbook.create_sheet(title='Özet Rapor')
-            
-            # Calculate summary statistics
-            total_stays = len(df)
-            total_revenue = df['Toplam Ücret'].sum()
-            avg_nights = df['Gece Sayısı'].mean()
-            
-            # Room type statistics
-            room_stats = df.groupby('Oda Tipi').agg({
-                'Misafir Adı': 'count',
-                'Toplam Ücret': 'sum',
-                'Gece Sayısı': 'sum'
-            }).reset_index()
-            
-            # Stay type statistics
-            stay_type_stats = df.groupby('Konaklama Tipi').agg({
-                'Misafir Adı': 'count',
-                'Toplam Ücret': 'sum',
-                'Gece Sayısı': 'sum'
-            }).reset_index()
-            
-            # Write summary statistics
-            summary_sheet['A1'] = 'KONAKLAMA PUANTAJI ÖZET RAPORU'
-            summary_sheet['A2'] = f'Rapor Tarihi: {datetime.now().strftime("%d.%m.%Y")}'
-            summary_sheet['A4'] = 'GENEL İSTATİSTİKLER'
-            summary_sheet['A5'] = 'Toplam Konaklama Sayısı:'
-            summary_sheet['B5'] = total_stays
-            summary_sheet['A6'] = 'Toplam Gelir:'
-            summary_sheet['B6'] = total_revenue
-            summary_sheet['A7'] = 'Ortalama Konaklama Süresi:'
-            summary_sheet['B7'] = f'{avg_nights:.1f} gece'
-            
-            # Write room type statistics
-            summary_sheet['A9'] = 'ODA TİPİ BAZINDA İSTATİSTİKLER'
-            summary_sheet['A10'] = 'Oda Tipi'
-            summary_sheet['B10'] = 'Konaklama Sayısı'
-            summary_sheet['C10'] = 'Toplam Gelir'
-            summary_sheet['D10'] = 'Toplam Gece'
-            
-            for i, row in enumerate(room_stats.itertuples(), 11):
-                summary_sheet[f'A{i}'] = row._1
-                summary_sheet[f'B{i}'] = row._2
-                summary_sheet[f'C{i}'] = row._3
-                summary_sheet[f'D{i}'] = row._4
-            
-            # Write stay type statistics
-            start_row = len(room_stats) + 13
-            summary_sheet[f'A{start_row}'] = 'KONAKLAMA TİPİ BAZINDA İSTATİSTİKLER'
-            summary_sheet[f'A{start_row+1}'] = 'Konaklama Tipi'
-            summary_sheet[f'B{start_row+1}'] = 'Konaklama Sayısı'
-            summary_sheet[f'C{start_row+1}'] = 'Toplam Gelir'
-            summary_sheet[f'D{start_row+1}'] = 'Toplam Gece'
-            
-            for i, row in enumerate(stay_type_stats.itertuples(), start_row+2):
-                summary_sheet[f'A{i}'] = row._1
-                summary_sheet[f'B{i}'] = row._2
-                summary_sheet[f'C{i}'] = row._3
-                summary_sheet[f'D{i}'] = row._4
-            
-            # Format main report sheet
-            for column in worksheet.columns:
-                max_length = 0
-                column = [cell for cell in column]
-                for cell in column:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                worksheet.column_dimensions[column[0].column_letter].width = adjusted_width
-            
-            # Format summary sheet
-            for column in summary_sheet.columns:
-                max_length = 0
-                column = [cell for cell in column]
-                for cell in column:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                summary_sheet.column_dimensions[column[0].column_letter].width = adjusted_width
-            
-            # Save the workbook
-            writer.close()
-            
-            QMessageBox.information(
-                self,
-                'Başarılı',
-                f'Puantaj raporu başarıyla oluşturuldu:\n{file_path}'
-            )
+            if dialog.exec_() == QDialog.Accepted:
+                # Get selected dates
+                start_date_str = start_date.date().toString('yyyy-MM-dd')
+                end_date_str = end_date.date().toString('yyyy-MM-dd')
+                
+                # Get report data with date filtering
+                report_data = self.stay_model.get_detailed_stay_report(start_date_str, end_date_str)
+                
+                if not report_data:
+                    QMessageBox.information(self, 'Bilgi', 'Seçilen tarih aralığında raporlanacak veri bulunamadı.')
+                    return
+                
+                df_report = pd.DataFrame(report_data)
+
+                # Get save file path
+                file_path, _ = QFileDialog.getSaveFileName(
+                    self,
+                    "Puantaj Raporu Kaydet",
+                    f"konaklama_puantaj_raporu_{start_date_str}_to_{end_date_str}.xlsx",
+                    "Excel Dosyaları (*.xlsx)"
+                )
+                
+                if not file_path:
+                    return
+                
+                if not file_path.endswith('.xlsx'):
+                    file_path += '.xlsx'
+
+                # Create Excel writer
+                writer = pd.ExcelWriter(file_path, engine='openpyxl')
+                
+                # Write data to Excel with multiple sheets
+                df_report.to_excel(writer, sheet_name='Detaylı Puantaj', index=False)
+                
+                # Create summary sheet
+                summary_data = {
+                    'Metrik': [
+                        'Toplam Misafir Sayısı',
+                        'Toplam Konaklama Sayısı',
+                        'Toplam Konaklama Günü',
+                        'Toplam Gelir',
+                    ],
+                    'Değer': [
+                        df_report['Toplam Misafir Sayısı'].iloc[0],
+                        df_report['Toplam Konaklama Sayısı'].iloc[0],
+                        df_report['Toplam Konaklama Günü'].iloc[0],
+                        df_report['Toplam Gelir'].iloc[0]
+                    ]
+                }
+                
+                df_summary = pd.DataFrame(summary_data)
+                df_summary.to_excel(writer, sheet_name='Özet', index=False)
+                
+                # Create room type analysis sheet
+                room_type_analysis = df_report.groupby('Oda Tipi').agg({
+                    'Konaklama Süresi (Gün)': 'sum',
+                    'Toplam Ücret': 'sum',
+                    'Misafir Adı': 'count'
+                }).reset_index()
+                
+                room_type_analysis.columns = ['Oda Tipi', 'Toplam Konaklama Günü', 'Toplam Gelir', 'Konaklama Sayısı']
+                room_type_analysis['Ortalama Konaklama Süresi'] = room_type_analysis['Toplam Konaklama Günü'] / room_type_analysis['Konaklama Sayısı']
+                room_type_analysis['Gelir Yüzdesi'] = (room_type_analysis['Toplam Gelir'] / df_report['Toplam Gelir'].iloc[0] * 100).round(2)
+                
+                room_type_analysis.to_excel(writer, sheet_name='Oda Tipi Analizi', index=False)
+                
+                writer.close()
+                
+                QMessageBox.information(
+                    self,
+                    'Başarılı',
+                    f"""Puantaj raporu başarıyla oluşturuldu:
+                    
+Tarih Aralığı: {start_date.date().toString('dd.MM.yyyy')} - {end_date.date().toString('dd.MM.yyyy')}
+Toplam Konaklama: {df_report['Toplam Konaklama Sayısı'].iloc[0]}
+Toplam Gelir: {df_report['Toplam Gelir'].iloc[0]:,.2f} TL
+
+Dosya: {file_path}"""
+                )
             
         except Exception as e:
             QMessageBox.critical(
                 self,
                 'Hata',
                 f'Puantaj raporu oluşturulurken hata oluştu: {str(e)}'
-            ) 
+            )
+
+    def show_info_message(self, message: str = "Rapor başarıyla oluşturuldu!"):
+        """Show an information message box.
+
+        Args:
+            message (str): The message to display.
+        """
+        QMessageBox.information(self, 'Bilgi', message) 

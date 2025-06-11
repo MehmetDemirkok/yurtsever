@@ -1,14 +1,18 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from database import Database
+from PyQt5.QtCore import pyqtSignal, QObject
 
-class StayModel:
+class StayModel(QObject):
+    report_generated = pyqtSignal()
+
     def __init__(self, db: Database):
         """Initialize stay model with database connection.
         
         Args:
             db (Database): Database instance
         """
+        super().__init__()
         self.db = db
     
     def create_stay(self, guest_name: str, guest_title: str, country: str, city: str,
@@ -257,56 +261,99 @@ class StayModel:
             print(f"Error getting stay statistics: {e}")
             raise
     
-    def get_detailed_stay_report(self) -> List[Dict[str, Any]]:
-        """Get detailed stay report data for Excel export.
+    def get_detailed_stay_report(self, start_date: str = None, end_date: str = None) -> List[Dict[str, Any]]:
+        """Get detailed stay report data for Excel export with comprehensive statistics.
         
+        Args:
+            start_date (str): Optional start date for filtering (YYYY-MM-DD)
+            end_date (str): Optional end date for filtering (YYYY-MM-DD)
+            
         Returns:
             List[Dict[str, Any]]: List of dictionaries containing stay report data
         """
         try:
-            # Get all stays with detailed information
-            self.db.cursor.execute('''
-                SELECT 
-                    guest_name,
-                    guest_title,
-                    country,
-                    city,
-                    check_in_date,
-                    check_out_date,
-                    room_type,
-                    nightly_rate,
-                    total_amount,
-                    CASE 
-                        WHEN julianday(check_out_date) - julianday(check_in_date) = 1 THEN 'Single'
-                        WHEN julianday(check_out_date) - julianday(check_in_date) = 2 THEN 'Double'
-                        WHEN julianday(check_out_date) - julianday(check_in_date) = 3 THEN 'Triple'
-                        ELSE 'Multiple'
-                    END as stay_type,
-                    julianday(check_out_date) - julianday(check_in_date) as nights
-                FROM stays
-                ORDER BY check_in_date DESC
-            ''')
+            # Base query with date filtering
+            query = '''
+                WITH stay_stats AS (
+                    SELECT 
+                        guest_name,
+                        guest_title,
+                        country,
+                        city,
+                        check_in_date,
+                        check_out_date,
+                        room_type,
+                        nightly_rate,
+                        total_amount,
+                        CASE 
+                            WHEN julianday(check_out_date) - julianday(check_in_date) = 1 THEN 'Single'
+                            WHEN julianday(check_out_date) - julianday(check_in_date) = 2 THEN 'Double'
+                            WHEN julianday(check_out_date) - julianday(check_in_date) = 3 THEN 'Triple'
+                            ELSE 'Multiple'
+                        END as stay_type,
+                        julianday(check_out_date) - julianday(check_in_date) as nights
+                    FROM stays
+                    WHERE 1=1
+                '''
             
+            params = []
+            if start_date:
+                query += " AND check_in_date >= ?"
+                params.append(start_date)
+            if end_date:
+                query += " AND check_out_date <= ?"
+                params.append(end_date)
+            
+            # Add summary statistics
+            query += '''
+                ),
+                summary_stats AS (
+                    SELECT
+                        COUNT(DISTINCT guest_name) as total_guests,
+                        COUNT(*) as total_stays,
+                        SUM(nights) as total_nights,
+                        SUM(total_amount) as total_revenue
+                    FROM stay_stats
+                )
+                SELECT 
+                    s.*,
+                    ss.total_guests,
+                    ss.total_stays,
+                    ss.total_nights,
+                    ss.total_revenue
+                FROM stay_stats s
+                CROSS JOIN summary_stats ss
+                ORDER BY s.check_in_date DESC
+            '''
+            
+            self.db.cursor.execute(query, tuple(params))
             stays = self.db.cursor.fetchall()
             
-            # Format the data
+            # Format the data with additional statistics
             report_data = []
             for stay in stays:
                 report_data.append({
-                    'guest_name': stay[0],
-                    'guest_title': stay[1],
-                    'country': stay[2],
-                    'city': stay[3],
-                    'check_in_date': stay[4],
-                    'check_out_date': stay[5],
-                    'room_type': stay[6],
-                    'nightly_rate': stay[7],
-                    'total_amount': stay[8],
-                    'stay_type': stay[9],
-                    'nights': stay[10]
+                    'Misafir Adı': stay[0],
+                    'Unvan': stay[1],
+                    'Ülke': stay[2],
+                    'Şehir': stay[3],
+                    'Giriş Tarihi': stay[4],
+                    'Çıkış Tarihi': stay[5],
+                    'Oda Tipi': stay[6],
+                    'Gecelik Ücret': stay[7],
+                    'Toplam Ücret': stay[8],
+                    'Konaklama Tipi': stay[9],
+                    'Konaklama Süresi (Gün)': stay[10],
+                    'Toplam Misafir Sayısı': stay[11],
+                    'Toplam Konaklama Sayısı': stay[12],
+                    'Toplam Konaklama Günü': stay[13],
+                    'Toplam Gelir': stay[14]
                 })
             
+            # Emit signal when report is generated
+            self.report_generated.emit()
             return report_data
+            
         except Exception as e:
-            print(f"Error getting detailed stay report: {e}")
+            print(f"Error generating detailed stay report: {e}")
             raise 
