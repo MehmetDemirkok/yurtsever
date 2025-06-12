@@ -16,8 +16,21 @@ import pandas as pd
 from datetime import datetime
 from unidecode import unidecode
 from typing import Any, Optional
+import re
 
 class MainWindow(QMainWindow):
+    # Define required Excel column names as a class attribute for consistent use
+    _REQUIRED_EXCEL_COLUMNS_MAP = {
+        'adi_soyadi': 'Adı Soyadı',
+        'unvan': 'Unvan',
+        'ulke': 'Ülke',
+        'sehir': 'Şehir',
+        'giris_tarihi': 'Giriş Tarihi',
+        'cikis_tarihi': 'Çıkış Tarihi',
+        'oda_tipi': 'Oda Tipi',
+        'gecelik_ucret': 'Gecelik Ücret'
+    }
+
     def __init__(self):
         super().__init__()
         self.db = Database()
@@ -28,15 +41,46 @@ class MainWindow(QMainWindow):
         
     @staticmethod
     def normalize_column_name(col_name: Any) -> Optional[str]:
-        """Normalize column names by stripping whitespace, converting to lowercase, and replacing spaces with underscores."""
-        if pd.isna(col_name):
+        """Normalizes column names for consistent matching."""
+        if not isinstance(col_name, str):
             return None
-        # Convert to string and strip whitespace
-        col_str = str(col_name).strip()
-        # Convert Turkish characters to their ASCII equivalents
+        
+        col_str = col_name.strip()
+        
+        # Replace various whitespace characters (including non-breaking spaces) with a single space
+        col_str = re.sub(r'\s+', ' ', col_str) # Replace all whitespace sequences with a single space
+        col_str = col_str.replace('\xa0', ' ') # Replace non-breaking space explicitly
+        
+        # Define a mapping for Turkish characters to ASCII equivalents
+        turkish_map = {
+            'ç': 'c', 'Ç': 'C',
+            'ğ': 'g', 'Ğ': 'G',
+            'ı': 'i', 'İ': 'I',
+            'ö': 'o', 'Ö': 'O',
+            'ş': 's', 'Ş': 'S',
+            'ü': 'u', 'Ü': 'U',
+        }
+        
+        # Apply manual mapping first
+        for turkish_char, ascii_char in turkish_map.items():
+            col_str = col_str.replace(turkish_char, ascii_char)
+        
+        # Then use unidecode for any other non-ASCII characters
         col_str = unidecode(col_str)
-        # Convert to lowercase and replace spaces with underscores
-        return col_str.lower().replace(" ", "_")
+        
+        # Convert to lowercase
+        col_str = col_str.lower()
+        
+        # Replace non-alphanumeric characters (except underscore) with a single underscore
+        col_str = re.sub(r'[^a-z0-9_]+', '_', col_str) # Allow underscore, replace others
+        
+        # Replace multiple underscores with a single underscore
+        col_str = re.sub(r'_+', '_', col_str)
+        
+        # Remove leading/trailing underscores if any
+        col_str = col_str.strip('_')
+
+        return col_str
 
     def init_ui(self):
         """Initialize the user interface."""
@@ -432,19 +476,14 @@ class MainWindow(QMainWindow):
             if not file_path:
                 return
             
-            # Read Excel file with explicit encoding
-            try:
-                df = pd.read_excel(file_path, engine='openpyxl')
-            except Exception as e:
-                QMessageBox.critical(
-                    self,
-                    'Hata',
-                    f'Excel dosyası okunamadı: {str(e)}\nLütfen dosyanın geçerli bir Excel dosyası olduğundan emin olun.'
-                )
-                return
+            # Print column names for debugging
+            print(f"Attempting to read Excel file: {file_path}")
+            
+            # Read Excel file with explicit encoding and specify the sheet name
+            df = pd.read_excel(file_path, engine='openpyxl', sheet_name='Misafir Kayıtları')
             
             # Print column names for debugging
-            print("Original columns:", df.columns.tolist())
+            print("Original columns (before normalization):", df.columns.tolist())
             
             # Normalize column names by stripping whitespace and converting to a consistent format
             df.columns = [self.normalize_column_name(col) for col in df.columns]
@@ -453,25 +492,14 @@ class MainWindow(QMainWindow):
             print("Normalized columns:", df.columns.tolist())
 
             # Validate required columns (normalized)
-            required_columns_map = {
-                'adi_soyadi': 'Adı Soyadı',
-                'unvan': 'Unvan',
-                'ulke': 'Ülke',
-                'sehir': 'Şehir',
-                'giris_tarihi': 'Giriş Tarihi',
-                'cikis_tarihi': 'Çıkış Tarihi',
-                'oda_tipi': 'Oda Tipi',
-                'gecelik_ucret': 'Gecelik Ücret'
-            }
-            
-            missing_normalized_columns = [col for col in required_columns_map.keys() if col not in df.columns]
+            missing_normalized_columns = [col for col in self._REQUIRED_EXCEL_COLUMNS_MAP.keys() if col not in df.columns]
             if missing_normalized_columns:
                 # Map back to original names for the error message
-                missing_original_names = [required_columns_map[col] for col in missing_normalized_columns]
+                missing_original_names = [self._REQUIRED_EXCEL_COLUMNS_MAP[col] for col in missing_normalized_columns]
                 QMessageBox.warning(
                     self,
                     'Hata',
-                    f'Excel dosyasında eksik sütunlar var: {", ".join(missing_original_names)}\n\nLütfen Excel şablonunu kullanarak doğru formatta veri girişi yapın.'
+                    f'Excel dosyasında beklenen sütunlardan bazıları eksik veya yanlış isimlendirilmiş: {", ".join(missing_original_names)}.\n\nLütfen Excel şablonunu (Excel Şablonu İndir butonu ile edinebilirsiniz) kullanarak VERİLERİNİZİ DOĞRU SÜTUN ADLARIYLA girin. Sütun adları şablondakiyle BİREBİR AYNI olmalıdır.'
                 )
                 return
             
@@ -591,15 +619,16 @@ class MainWindow(QMainWindow):
         """Create and download Excel template file."""
         try:
             # Create a DataFrame with example data
+            # Use the consistent required columns for template generation
             example_data = {
-                'Adı Soyadı': ['Ahmet Yılmaz', 'Ayşe Demir'],
-                'Unvan': ['Bay', 'Bayan'],
-                'Ülke': ['Türkiye', 'Türkiye'],
-                'Şehir': ['İstanbul', 'Ankara'],
-                'Giriş Tarihi': ['2024-03-20', '2024-03-21'],
-                'Çıkış Tarihi': ['2024-03-25', '2024-03-23'],
-                'Oda Tipi': ['Single Oda', 'Double Oda'],
-                'Gecelik Ücret': [500, 750]
+                self._REQUIRED_EXCEL_COLUMNS_MAP['adi_soyadi']: ['Ahmet Yılmaz', 'Ayşe Demir'],
+                self._REQUIRED_EXCEL_COLUMNS_MAP['unvan']: ['Bay', 'Bayan'],
+                self._REQUIRED_EXCEL_COLUMNS_MAP['ulke']: ['Türkiye', 'Türkiye'],
+                self._REQUIRED_EXCEL_COLUMNS_MAP['sehir']: ['İstanbul', 'Ankara'],
+                self._REQUIRED_EXCEL_COLUMNS_MAP['giris_tarihi']: ['2024-03-20', '2024-03-21'],
+                self._REQUIRED_EXCEL_COLUMNS_MAP['cikis_tarihi']: ['2024-03-25', '2024-03-23'],
+                self._REQUIRED_EXCEL_COLUMNS_MAP['oda_tipi']: ['Single Oda', 'Double Oda'],
+                self._REQUIRED_EXCEL_COLUMNS_MAP['gecelik_ucret']: [500, 750]
             }
             df = pd.DataFrame(example_data)
             
@@ -662,14 +691,14 @@ class MainWindow(QMainWindow):
                 'Excel Şablonu Kullanım Talimatları:',
                 '',
                 '1. Tüm sütunları doldurunuz:',
-                '   - Adı Soyadı: Misafirin tam adı',
-                '   - Unvan: Bay/Bayan',
-                '   - Ülke: Misafirin ülkesi',
-                '   - Şehir: Misafirin şehri',
-                '   - Giriş Tarihi: YYYY-MM-DD formatında (örn: 2024-03-20)',
-                '   - Çıkış Tarihi: YYYY-MM-DD formatında (örn: 2024-03-25)',
-                '   - Oda Tipi: Dropdown menüden seçiniz',
-                '   - Gecelik Ücret: Sayısal değer (örn: 500.00)',
+                f'   - {self._REQUIRED_EXCEL_COLUMNS_MAP["adi_soyadi"]}: Misafirin tam adı',
+                f'   - {self._REQUIRED_EXCEL_COLUMNS_MAP["unvan"]}: Bay/Bayan',
+                f'   - {self._REQUIRED_EXCEL_COLUMNS_MAP["ulke"]}: Misafirin ülkesi',
+                f'   - {self._REQUIRED_EXCEL_COLUMNS_MAP["sehir"]}: Misafirin şehri',
+                f'   - {self._REQUIRED_EXCEL_COLUMNS_MAP["giris_tarihi"]}: YYYY-MM-DD formatında (örn: 2024-03-20)',
+                f'   - {self._REQUIRED_EXCEL_COLUMNS_MAP["cikis_tarihi"]}: YYYY-MM-DD formatında (örn: 2024-03-25)',
+                f'   - {self._REQUIRED_EXCEL_COLUMNS_MAP["oda_tipi"]}: Dropdown menüden seçiniz',
+                f'   - {self._REQUIRED_EXCEL_COLUMNS_MAP["gecelik_ucret"]}: Sayısal değer (örn: 500.00)',
                 '',
                 '2. Örnek kayıtları silip kendi kayıtlarınızı ekleyebilirsiniz.',
                 '3. Tarihleri YYYY-MM-DD formatında girdiğinizden emin olun.',
@@ -929,4 +958,4 @@ Dosya: {file_path}"""
         Args:
             message (str): The message to display.
         """
-        QMessageBox.information(self, 'Bilgi', message) 
+        QMessageBox.information(self, 'Bilgi', message)
