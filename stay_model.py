@@ -15,20 +15,23 @@ class StayModel(QObject):
         super().__init__()
         self.db = db
     
-    def create_stay(self, guest_name: str, guest_title: str, country: str, city: str,
+    def create_stay(self, guest_name: str, guest_title: str, company_name: str, country: str, city: str,
                    check_in_date: str, check_out_date: str, room_type: str,
-                   nightly_rate: float) -> int:
+                   hotel_purchase_price: float, hotel_name: str, hotel_sale_price: float) -> int:
         """Create a new stay record.
         
         Args:
             guest_name (str): Name of the guest
             guest_title (str): Title of the guest
+            company_name (str): Company/Current of the guest
             country (str): Country of the guest
             city (str): City of the guest
             check_in_date (str): Check-in date (YYYY-MM-DD)
             check_out_date (str): Check-out date (YYYY-MM-DD)
             room_type (str): Type of the room
-            nightly_rate (float): Nightly rate for the stay
+            hotel_purchase_price (float): Hotel purchase price for the stay
+            hotel_name (str): Name of the hotel
+            hotel_sale_price (float): Hotel sale price for the stay
             
         Returns:
             int: ID of the created stay record
@@ -37,22 +40,23 @@ class StayModel(QObject):
             check_in = datetime.strptime(check_in_date, "%Y-%m-%d")
             check_out = datetime.strptime(check_out_date, "%Y-%m-%d")
             nights = (check_out - check_in).days
-            total_amount = nights * nightly_rate
+            hotel_purchase_total_amount = nights * hotel_purchase_price
+            total_sale_amount = nights * hotel_sale_price
             
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             query = '''
                 INSERT INTO stays (
-                    guest_name, guest_title, country, city,
+                    guest_name, guest_title, company_name, country, city,
                     check_in_date, check_out_date, room_type,
-                    nightly_rate, total_amount, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    hotel_purchase_price, hotel_purchase_total_amount, hotel_name, hotel_sale_price, total_sale_amount, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             '''
             
             self.db.cursor.execute(query, (
-                guest_name, guest_title, country, city,
+                guest_name, guest_title, company_name, country, city,
                 check_in_date, check_out_date, room_type,
-                nightly_rate, total_amount, now, now
+                hotel_purchase_price, hotel_purchase_total_amount, hotel_name, hotel_sale_price, total_sale_amount, now, now
             ))
             self.db.conn.commit()
             return self.db.cursor.lastrowid
@@ -75,7 +79,7 @@ class StayModel(QObject):
             List[Dict[str, Any]]: List of stay records
         """
         try:
-            query = 'SELECT id, guest_name, guest_title, country, city, check_in_date, check_out_date, room_type, nightly_rate, total_amount, created_at, updated_at FROM stays'
+            query = 'SELECT id, guest_name, guest_title, company_name, country, city, check_in_date, check_out_date, room_type, hotel_purchase_price, hotel_purchase_total_amount, hotel_name, hotel_sale_price, total_sale_amount, created_at, updated_at FROM stays'
             conditions = []
             params = []
 
@@ -102,13 +106,17 @@ class StayModel(QObject):
                     'ID': 'id',
                     'Adı Soyadı': 'guest_name',
                     'Unvan': 'guest_title',
+                    'Kurum / Cari': 'company_name',
                     'Ülke': 'country',
                     'Şehir': 'city',
                     'Giriş Tarihi': 'check_in_date',
                     'Çıkış Tarihi': 'check_out_date',
                     'Oda Tipi': 'room_type',
-                    'Gecelik Ücret': 'nightly_rate',
-                    'Toplam Ücret': 'total_amount'
+                    'Gecelik Ücret': 'hotel_purchase_price',
+                    'Otel Alış Toplam Ücreti': 'hotel_purchase_total_amount',
+                    'Otel Adı': 'hotel_name',
+                    'Otel Satış Fiyatı': 'hotel_sale_price',
+                    'Toplam Satış Tutarı': 'total_sale_amount'
                 }
                 db_column = column_map.get(sort_column, 'check_in_date') # Default to check_in_date
                 query += f" ORDER BY {db_column} {sort_order}"
@@ -132,7 +140,7 @@ class StayModel(QObject):
             Optional[Dict[str, Any]]: Stay record if found, None otherwise
         """
         try:
-            self.db.cursor.execute('SELECT id, guest_name, guest_title, country, city, check_in_date, check_out_date, room_type, nightly_rate, total_amount, created_at, updated_at FROM stays WHERE id = ?', (stay_id,))
+            self.db.cursor.execute('SELECT id, guest_name, guest_title, company_name, country, city, check_in_date, check_out_date, room_type, hotel_purchase_price, hotel_purchase_total_amount, hotel_name, hotel_sale_price, total_sale_amount, created_at, updated_at FROM stays WHERE id = ?', (stay_id,))
             row = self.db.cursor.fetchone()
             if row:
                 columns = [description[0] for description in self.db.cursor.description]
@@ -160,9 +168,9 @@ class StayModel(QObject):
             values = []
             
             for key, value in kwargs.items():
-                if key in ['guest_name', 'guest_title', 'country', 'city',
+                if key in ['guest_name', 'guest_title', 'company_name', 'country', 'city',
                           'check_in_date', 'check_out_date', 'room_type',
-                          'nightly_rate']:
+                          'hotel_purchase_price', 'hotel_name', 'hotel_sale_price']:
                     update_fields.append(f"{key} = ?")
                     values.append(value)
             
@@ -170,7 +178,7 @@ class StayModel(QObject):
                 return False
                 
             # Recalculate total amount if dates or rate changed
-            if any(key in kwargs for key in ['check_in_date', 'check_out_date', 'nightly_rate']):
+            if any(key in kwargs for key in ['check_in_date', 'check_out_date', 'hotel_purchase_price', 'hotel_sale_price']):
                 stay = self.get_stay_by_id(stay_id)
                 if stay:
                     check_in = datetime.strptime(
@@ -182,11 +190,15 @@ class StayModel(QObject):
                         "%Y-%m-%d"
                     )
                     nights = (check_out - check_in).days
-                    nightly_rate = kwargs.get('nightly_rate', stay['nightly_rate'])
-                    total_amount = nights * nightly_rate
+                    hotel_purchase_price = kwargs.get('hotel_purchase_price', stay['hotel_purchase_price'])
+                    hotel_sale_price = kwargs.get('hotel_sale_price', stay['hotel_sale_price'])
+                    hotel_purchase_total_amount = nights * hotel_purchase_price
+                    total_sale_amount = nights * hotel_sale_price
                     
-                    update_fields.append("total_amount = ?")
-                    values.append(total_amount)
+                    update_fields.append("hotel_purchase_total_amount = ?")
+                    values.append(hotel_purchase_total_amount)
+                    update_fields.append("total_sale_amount = ?")
+                    values.append(total_sale_amount)
             
             update_fields.append("updated_at = ?")
             values.append(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -231,7 +243,7 @@ class StayModel(QObject):
         try:
             # Get room type counts
             self.db.cursor.execute('''
-                SELECT room_type, COUNT(*) as count, SUM(total_amount) as total_amount
+                SELECT room_type, COUNT(*) as count, SUM(hotel_purchase_total_amount) as hotel_purchase_total_amount
                 FROM stays
                 GROUP BY room_type
             ''')
@@ -239,7 +251,7 @@ class StayModel(QObject):
             
             # Get total stays and amount
             self.db.cursor.execute('''
-                SELECT COUNT(*) as total_stays, SUM(total_amount) as total_amount
+                SELECT COUNT(*) as total_stays, SUM(hotel_purchase_total_amount) as total_hotel_purchase_amount, SUM(total_sale_amount) as total_sale_amount
                 FROM stays
             ''')
             total_stats = self.db.cursor.fetchone()
@@ -249,11 +261,12 @@ class StayModel(QObject):
                 'room_types': {
                     row[0]: {
                         'count': row[1],
-                        'total_amount': row[2]
+                        'hotel_purchase_total_amount': row[2]
                     } for row in room_stats
                 },
                 'total_stays': total_stats[0],
-                'total_amount': total_stats[1]
+                'total_hotel_purchase_amount': total_stats[1],
+                'total_sale_amount': total_stats[2]
             }
             
             return stats
@@ -276,15 +289,20 @@ class StayModel(QObject):
             query = '''
                 WITH stay_stats AS (
                     SELECT 
+                        id,
                         guest_name,
                         guest_title,
+                        company_name,
                         country,
                         city,
                         check_in_date,
                         check_out_date,
                         room_type,
-                        nightly_rate,
-                        total_amount,
+                        hotel_purchase_price,
+                        hotel_purchase_total_amount,
+                        hotel_name,
+                        hotel_sale_price,
+                        total_sale_amount,
                         CASE 
                             WHEN julianday(check_out_date) - julianday(check_in_date) = 1 THEN 'Single'
                             WHEN julianday(check_out_date) - julianday(check_in_date) = 2 THEN 'Double'
@@ -312,47 +330,44 @@ class StayModel(QObject):
                         COUNT(DISTINCT guest_name) as total_guests,
                         COUNT(*) as total_stays,
                         SUM(nights) as total_nights,
-                        SUM(total_amount) as total_revenue
+                        SUM(hotel_purchase_total_amount) as total_revenue_purchase,
+                        SUM(total_sale_amount) as total_revenue_sale
                     FROM stay_stats
                 )
                 SELECT 
-                    s.*,
+                    s.id,
+                    s.guest_name,
+                    s.guest_title,
+                    s.company_name,
+                    s.country,
+                    s.city,
+                    s.check_in_date,
+                    s.check_out_date,
+                    s.room_type,
+                    s.hotel_purchase_price,
+                    s.hotel_purchase_total_amount,
+                    s.hotel_name,
+                    s.hotel_sale_price,
+                    s.total_sale_amount,
+                    s.stay_type,
+                    s.nights,
                     ss.total_guests,
                     ss.total_stays,
                     ss.total_nights,
-                    ss.total_revenue
+                    ss.total_revenue_purchase,
+                    ss.total_revenue_sale
                 FROM stay_stats s
                 CROSS JOIN summary_stats ss
                 ORDER BY s.check_in_date DESC
             '''
             
             self.db.cursor.execute(query, tuple(params))
-            stays = self.db.cursor.fetchall()
-            
-            # Format the data with additional statistics
-            report_data = []
-            for stay in stays:
-                report_data.append({
-                    'Misafir Adı': stay[0],
-                    'Unvan': stay[1],
-                    'Ülke': stay[2],
-                    'Şehir': stay[3],
-                    'Giriş Tarihi': stay[4],
-                    'Çıkış Tarihi': stay[5],
-                    'Oda Tipi': stay[6],
-                    'Gecelik Ücret': stay[7],
-                    'Toplam Ücret': stay[8],
-                    'Konaklama Tipi': stay[9],
-                    'Konaklama Süresi (Gün)': stay[10],
-                    'Toplam Misafir Sayısı': stay[11],
-                    'Toplam Konaklama Sayısı': stay[12],
-                    'Toplam Konaklama Günü': stay[13],
-                    'Toplam Gelir': stay[14]
-                })
+            columns = [description[0] for description in self.db.cursor.description]
+            stays = [dict(zip(columns, row)) for row in self.db.cursor.fetchall()]
             
             # Emit signal when report is generated
             self.report_generated.emit()
-            return report_data
+            return stays
             
         except Exception as e:
             print(f"Error generating detailed stay report: {e}")
